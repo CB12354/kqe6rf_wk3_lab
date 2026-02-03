@@ -1,8 +1,12 @@
-# %% Imports
+# %% Imports and setup
 import numpy as np
 import pandas as pd
+from pandas.api.types import is_numeric_dtype as is_ndt
+from pandas.api.types import is_string_dtype as is_sdt
+from pandas.api.types import is_bool_dtype as is_bdt
 from sklearn.model_selection import train_test_split  # For splitting data
 from sklearn.preprocessing import MinMaxScaler, StandardScaler  # For scaling
+np.random.seed(2032026)
 
 # %% Lab Instructions
 # Step one: Review these two datasets and brainstorm problems that 
@@ -25,22 +29,16 @@ from sklearn.preprocessing import MinMaxScaler, StandardScaler  # For scaling
 # Step three: What do your instincts tell you about the data. 
 # Can it address your problem, what areas/items are you worried about?
 
-# Step four: Create functions for your two pipelines that produces the train 
-# and test datasets. The end result should be a series of functions that can 
-# be called to produce the train and test datasets for each of your two 
-# problems that includes all the data prep steps you took. This is essentially 
-# creating a DAG for your data prep steps. Imagine you will need to do this for 
-# multiple problems in the future so creating functions that can be reused is 
-# important. You don't need to create one full pipeline function that does 
-# everything but rather a series of smaller functions that can be called in 
-# sequence to produce the final datasets. Use your judgement on how to break 
-# up the functions.
-# %%
+
+# %% Load Datasets for EDA
 # College Completion Dataset
 college = pd.read_csv("cc_institution_details.csv")
-college_sat = college[college['med_sat_value'] > 0]
+# Job Placement Dataset
+job_url = "https://raw.githubusercontent.com/DG1606/CMS-R-2020/master/Placement_Data_Full_Class.csv"
+job = pd.read_csv(job_url)
 
 # %%
+# COLLEGE COMPLETION DATASET
 # Central question: Say you're a private high school that wants to increase the 
 # percent of their applicants that receive a merit scholarship in order to attract
 # more intelligent students. Can you predict if a school is likely to give a
@@ -62,6 +60,7 @@ college_sat = college[college['med_sat_value'] > 0]
 #     all 4-year public institutions. If we're predicting a broad range of colleges, they're unusable.
 #   - SAT columns. It's mostly the well-documented colleges that have SAT data available which
 #     biases against smaller/associates colleges.
+#   - Endowment value. Too much missing seemingly at random (less % than most missing)
 # Categorical columns: city, state, level, control, basic
 # Compressibles: State (Compress into main 4 US regions), Basic (Compress into top 4 or so categories + others)
 # Removables: City (too many categories to be useful and cannot designate urban/rural easily)
@@ -76,6 +75,25 @@ college_sat = college[college['med_sat_value'] > 0]
 # Oddly formatted columns: counted_pct. I'm not sure what the second number means.
 #   I'm going to make it just the first number. 
 #
+# There's a huge base of missing data that makes it hard to predict things on a wide scope.
+#   If you wanted to make a question about 4-year public institutions specifically, you'd be
+#   in good hands. They have the most data available. In terms of my question, which has a
+#   broader scope, there's a lot of columns you need to filter out simply because there's not
+#   enough information for the schools with scholarship data available (ex. the VSA columns). 
+#   This dataset could still answer the scholarship question, but with an incomplete picture 
+#   of the statistics.
+
+# %%
+# JOB PLACEMENT DATASET
+# Central question: What feature is most important in predicting job placement?
+# Independent business metric: Say you're a company like Indeed that tries to connect
+# employees to employers. If a factor rises to the surface, try to more aggressively
+# market employees with that factor to employers. Metric is hiring rates, if they go
+# up after implementing that strategy then the model did its job.
+#
+# Column analysis: 
+# Target column: Status
+# ID columns: sl-no (drop during training)
 
 #%% General Cleanup Functions
 def filter_columns_by_condition(df: pd.DataFrame, condition: bool = True, inv: bool = False):
@@ -144,8 +162,23 @@ def ml_df_transformer(df: pd.DataFrame, drop_columns: list = [],
     """
     df_transformed = df.copy(deep = True)
     df_transformed = df_transformed.drop(labels=drop_columns, axis=1)
+    mms = MinMaxScaler()
+    ss = StandardScaler()
+    cat_cols = []
     for col in df_transformed.columns:
-        print(col, df_transformed[col].dtype)
+        if is_bdt(df_transformed[col]):
+            pass
+        elif is_ndt(df_transformed[col]):
+            if col in standardize_columns:
+                df_transformed[col] = ss.fit_transform(df_transformed[[col]])
+            else:
+                df_transformed[col] = mms.fit_transform(df_transformed[[col]])
+        elif is_sdt(df_transformed[col]) or df_transformed[col].dtype == 'category':
+            df_transformed[col] = df_transformed[col].astype('category')
+            cat_cols.append(col)
+    df_transformed = pd.get_dummies(df_transformed, columns=cat_cols)
+            
+    df_transformed = df_transformed.dropna()
     return df_transformed
 
 topNValues = lambda df, col, n: list(df[col].value_counts().index)[:n]
@@ -170,7 +203,7 @@ def region(state):
         return "South" 
 
 
-# %% Formatting
+# %% Formatting college data set
 college = pd.read_csv("cc_institution_details.csv")
 # Collapse basic into top 5 categories + other
 top5basic = topNValues(college, "basic", 5)
@@ -180,22 +213,26 @@ reduce_cat_col(college, "basic", top5basic)
 for col in ['hbcu', 'flagship']:
     convert_col_to_boolean(college, col, lambda x: x == "X")
 
-# Convert awards_per_value to is_generous. Makes a 44-56 true-false split
-convert_col_to_boolean(college, "awards_per_value", lambda x: x > 22.0, "is_generous")
+# Convert awards_per_value to is_generous
+convert_col_to_boolean(college, 
+                       "awards_per_value", 
+                       lambda x: x > np.percentile(college['awards_per_value'],75), 
+                       "is_generous")
+
 
 # Filter out rows with less than 33.3% of students included in metrics (insufficient data)
 college['counted_pct'] = (college['counted_pct'].apply(lambda x: str(x).split("|")[0])).astype("float")
-college = college[college['counted_pct'] > 33.3]
+college = college[college['counted_pct'] > 33.3].reset_index(drop=True)
 
 # Make US States into the main 4 us regions
 college['state'] = (college['state'].apply(region)).astype("category")
 college.rename(columns={'state' : 'region'},inplace=True)
 
-# %%
-# Transformation
+# %% Transform college dataset
+
 drop_cols = ['index','unitid', 'chronname', 'similar', 'site', 'nicknames', 
              'long_x', 'lat_y', 'city', 'carnegie_ct', 
-             'med_sat_value', 'med_sat_percentile']
+             'med_sat_value', "endow_value"]
 # Drop VSA columns
 for col in [og_col for og_col in college.columns if "vsa" in og_col]:
     drop_cols.append(col)
@@ -204,7 +241,19 @@ for col in [og_col for og_col in college.columns if "percentile" in og_col]:
     drop_cols.append(col)
 college_transformed = ml_df_transformer(college, 
                                         drop_columns=drop_cols, 
-                                        standardize_columns=[])
+                                        standardize_columns=['grad_150_value','pell_value',
+                                                             'retain_value',''])
 
+# Calculate prevalence of generous colleges in transformed dataset
+print(sum(college_transformed['is_generous']) / len(college_transformed))
+# about 16% 
 
-# %%
+# %% Train and test datasets for college dataset 
+train, test = train_test_split(college_transformed, 
+                               train_size=0.6,
+                               stratify=college_transformed['is_generous'])
+print(sum(train['is_generous']) / len(train))
+
+tune, test = train_test_split(test, 
+                               train_size=0.5,
+                               stratify=test['is_generous'])
