@@ -83,8 +83,8 @@ job = pd.read_csv(job_url)
 #   This dataset could still answer the scholarship question, but with an incomplete picture 
 #   of the statistics.
 
-# %%
-# JOB PLACEMENT DATASET
+# %% JOB PLACEMENT DATASET
+# 
 # Central question: What feature is most important in predicting job placement?
 # Independent business metric: Say you're a company like Indeed that tries to connect
 # employees to employers. If a factor rises to the surface, try to more aggressively
@@ -93,7 +93,19 @@ job = pd.read_csv(job_url)
 #
 # Column analysis: 
 # Target column: Status
-# ID columns: sl-no (drop during training)
+# ID columns: Serial Number (drop during training)
+# Category columns: Gender, Secondary board, postsecondary board, 
+# higher secondary specialization, Undergrad degree, work experience, 
+# MBA specialization, status
+# Columns to convert to boolean: status -> is_employed, workex -> has_exp,
+# ssc_b / hsc_b -> ssc_in_central_board / hsc_in_central_board, gender -> is_male
+# Columns to fix: Salary (missing data should be 0)
+#
+# Columns to drop: Salary (Salary post-placement is irrelevant in predicting placement)
+#
+# This data seems to be reasonably usable from the get-go. I think it could answer my question
+# pretty well, but the sample size is very small (215). We'd need a bigger dataset to make a more
+# reliably accurate model on a bigger scale.
 
 #%% General Cleanup Functions
 def filter_columns_by_condition(df: pd.DataFrame, condition: bool = True, inv: bool = False):
@@ -249,6 +261,7 @@ print(sum(college_transformed['is_generous']) / len(college_transformed))
 # about 16% 
 
 # %% Train and test datasets for college dataset 
+
 train, test = train_test_split(college_transformed, 
                                train_size=0.6,
                                stratify=college_transformed['is_generous'])
@@ -257,3 +270,42 @@ print(sum(train['is_generous']) / len(train))
 tune, test = train_test_split(test, 
                                train_size=0.5,
                                stratify=test['is_generous'])
+
+# %% Formatting job data set
+job = pd.read_csv(job_url)
+# Columns to convert to boolean: status -> is_employed, workex -> has_exp,
+# ssc_b / hsc_b -> ssc_in_central_board / hsc_in_central_board, gender -> is_male
+convert_col_to_boolean(job, 'status', lambda x: x == "Placed", "is_employed")
+convert_col_to_boolean(job, 'workex', lambda x: x == "Yes", "has_exp")
+convert_col_to_boolean(job, 'ssc_b', lambda x: x == "Central", "ssc_in_central_board")
+convert_col_to_boolean(job, 'hsc_b', lambda x: x == "Central", "hsc_in_central_board")
+convert_col_to_boolean(job, 'gender', lambda x: x == "M", "is_male")
+# Columns to fix: Salary (missing data should be 0)
+job['salary'] = job['salary'].apply(lambda x: x if x > 0 else 0)
+
+# Category columns that are not boolean: higher secondary specialization, 
+# Undergrad degree, MBA specialization
+cat_cols = ['hsc_s', 'degree_t', 'specialisation']
+for c in cat_cols:
+    job[c] = job[c].astype('category')
+
+
+
+
+# %% Transform job dataset
+# ID columns: Serial Number (drop during training)
+# Columns to drop: Salary (Salary post-placement is irrelevant in predicting placement)
+drop_cols = ['sl_no', 'salary']
+# Relatively normally distributed columns: ssc_p, hsc_p, degree_p, mba_p
+stand_cols = ['ssc_p', 'hsc_p', 'degree_p', 'mba_p']
+job_transformed = ml_df_transformer(job, drop_columns=drop_cols, standardize_columns=stand_cols)
+# %% Train and test datasets for job dataset
+
+train, test = train_test_split(job_transformed, 
+                               train_size=0.6,
+                               stratify=job_transformed['is_employed'])
+print(sum(train['is_employed']) / len(train))
+
+tune, test = train_test_split(test, 
+                               train_size=0.5,
+                               stratify=test['is_employed'])
