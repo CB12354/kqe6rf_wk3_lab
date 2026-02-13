@@ -94,6 +94,7 @@ def format_job_dataset():
     cat_cols = ['hsc_s', 'degree_t', 'specialisation']
     for c in cat_cols:
         job[c] = job[c].astype('category')
+    return job
 
 def transform_job_dataset(job: pd.DataFrame):
     """Applies ml_df_transformer() to the job placement dataset.
