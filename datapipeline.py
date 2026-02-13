@@ -13,7 +13,11 @@
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split  # For splitting data
-from dataprep import *
+from dataprep import reduce_cat_col
+from dataprep import topNValues
+from dataprep import convert_col_to_boolean
+from dataprep import ml_df_transformer
+from dataprep import region
 
 
 # %% 
@@ -45,7 +49,7 @@ def format_college_dataset():
     college.rename(columns={'state' : 'region'},inplace=True)
     return college
 
-def transform_college_dataset(college: DataFrame):
+def transform_college_dataset(college: pd.DataFrame):
     """Applies ml_df_transformer() to the college information dataset.
 
     Args:
@@ -91,7 +95,7 @@ def format_job_dataset():
     for c in cat_cols:
         job[c] = job[c].astype('category')
 
-def transform_job_dataset(job: DataFrame):
+def transform_job_dataset(job: pd.DataFrame):
     """Applies ml_df_transformer() to the job placement dataset.
 
     Args:
@@ -108,7 +112,7 @@ def transform_job_dataset(job: DataFrame):
     return job_transformed
 
 # Helper function to get all 3 datasets at once
-def triple_t_split(df: pd.DataFrame, tr_size, target):
+def triple_t_split(df: pd.DataFrame, tr_size, target, tune = True):
     """Splits a dataset into 3: train, tune, and test
 
     Args:
@@ -123,8 +127,11 @@ def triple_t_split(df: pd.DataFrame, tr_size, target):
     train, test = train_test_split(df, 
                                 train_size=tr_size,
                                 stratify=df[target])
-    print(sum(train['is_generous']) / len(train))
+    print(sum(train[target]) / len(train))
 
+    if not tune:
+        return train, test
+    
     tune, test = train_test_split(test, 
                                 train_size=0.5,
                                 stratify=test[target])
