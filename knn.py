@@ -1,3 +1,6 @@
+# THIS CODE IS MEANT TO BE RUN AS PART OF THE SAME REPO FROM THE
+# PREVIOUS WEEK - FUNCTIONS ARE REUSED FROM THERE
+
 #%% imports
 import numpy as np
 import pandas as pd
@@ -92,6 +95,17 @@ pd.crosstab(df_p['actual'], df_p['predicted'])
 # function just run them separately.) 
 
 def score_with_threshold(probs, actual, thresh: float = 0.5) -> float:
+    """Scores a model's accuracy with a modified threshold function.
+
+    Args:
+        probs (list-like): Iterable array of probabilities of the positive class
+        actual (list-like): Iterable array of whether the class is positive or not
+        thresh (float, optional): The threshold of whether to classify as
+            positive given the probability is >= this value. Defaults to 0.5.
+
+    Returns:
+        float: the ratio of correct predictions
+    """
     classes_cast = [1 if prob >= thresh else 0 for prob in probs]
     correct = list(np.zeros(len(classes_cast)))
     actual = list(actual)
@@ -103,10 +117,31 @@ def score_with_threshold(probs, actual, thresh: float = 0.5) -> float:
     
 
 def clean_split_college(target: str):
+    """Clean, transform, and train-test-split the college data set given a target metric.
+
+    Args:
+        target (str): The col name of the target column to stratify split by
+
+    Returns:
+        pd.DataFrame, pd.DataFrame: the train and test datasets
+    """
     return triple_t_split(transform_college_dataset(format_college_dataset()),
                           .7, target, tune = False)
 
 def train_test_model_college(train: pd.DataFrame, test: pd.DataFrame, k: int, target="", thresh: float = 0.5):
+    """Create a kNN model to predict a parameter of the college data set.
+
+    Args:
+        train (pd.DataFrame): The train dataset
+        test (pd.DataFrame): The test dataset
+        k (int): Number of nearest neighbors to predict by
+        target (str, optional): The target column's name. Defaults to "".
+        thresh (float, optional): The threshold to classify by. Defaults to 0.5.
+
+    Returns:
+        float, pd.DataFrame: the accuracy score and a DataFrame of the actual 
+            class, predicted class, and probabilities of the positive class
+    """
     X = train[[col for col in train.columns if col != target]]
     Y = train[[target]]
     model = KNeighborsClassifier(n_neighbors = k)
